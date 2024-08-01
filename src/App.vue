@@ -5,7 +5,6 @@ import { DeleteFilled, ArrowDropDownRound, CheckRound } from '@vicons/material'
 import { useStorage } from '@vueuse/core'
 import { useBreakpoints } from '@vueuse/core'
 
-
 const breakpoints = useBreakpoints({
   mobile: 0, // optional
   desktop: 1280,
@@ -15,7 +14,7 @@ const mobile = breakpoints.isSmaller('desktop')
 
 const desktop = breakpoints.isGreaterOrEqual('desktop')
 
-const geminiApiKey = ref<string>('AIzaSyAYKKekVNkc50zMou2JFQ5gccOQiC8xloI')
+const geminiApiKey = useStorage<string>('geminiApiKey', '')
 
 async function fileToGenerativePart(file: File) {
   const base64EncodedDataPromise = new Promise((resolve) => {
@@ -109,10 +108,14 @@ function deleteField(index: number) {
 
 const cost = ref(0)
 
+const running = ref(false)
+
 async function run() {
   if (file.value === null) {
     return
   }
+
+  running.value = true
 
   cost.value = 0
 
@@ -133,18 +136,21 @@ async function run() {
 
   const schemaPrompt = getSchema(activeSchema.value.fields)
 
-  const prompt = "Express image in json format without markdown schema. Use the following schema: \n" + schemaPrompt
+  const promptPrefix = "Express image in json format without markdown schema. Use the following schema: \n"
+  const prompt = promptPrefix + schemaPrompt
 
   const filePart = await fileToGenerativePart(file.value)
   const generatedContent = await model.generateContent([prompt, filePart as any]);
   const response = await generatedContent.response;
-  const text = response.text();
+  const text = response.text().replace(/^[^{]*|[^}]*$/g, '');
 
   const usageMetadata = response.usageMetadata
   cost.value = (usageMetadata?.candidatesTokenCount || 0) * 1.05 * 1e-6
     + (usageMetadata?.promptTokenCount || 0) * 0.35 * 1e-6
 
   result.value = JSON.parse(text)
+
+  running.value = false
 }
 
 </script>
@@ -180,7 +186,7 @@ n-config-provider(:theme="darkTheme")
                 n-input(v-model:value="geminiApiKey" placeholder="API Key" size="small" style="width: 400px;" type="password")
         n-space(:align="'center'")
           div(style="font-family: monospace;") USD {{ cost.toFixed(4) }}
-          n-button(type="primary" @click="run") Run
+          n-button(type="primary" @click="run" :loading="running") Run
     n-layout-content
       n-split(:min="0.1" :max="0.9" :direction="mobile ? 'vertical' : 'horizontal'")
         template(#1)
